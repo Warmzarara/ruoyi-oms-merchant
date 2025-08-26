@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BorrowRecordMapper">
+
+    <resultMap type="BorrowRecord" id="BorrowRecordResult">
+        <id     property="id"        column="id"         />
+        <result property="bookName"        column="book_name"         />
+        <result property="borrowerName"      column="borrower_name"       />
+        <result property="borrowDate"      column="borrow_date"       />
+        <result property="returnDate"         column="return_date"           />
+        <result property="dueDate"   column="due_date"     />
+        <result property="status"           column="status"             />
+        <result property="remark"        column="remark"          />
+    </resultMap>
+
+    <select id="selectBorrowRecord" parameterType="BorrowRecord" resultMap="BorrowRecordResult">
+        select id,
+        book_name,
+        borrower_name,
+        borrow_date,
+        return_date,
+        due_date,
+        status,
+        remark
+        from borrow_record bc
+        <where>
+            <if test="borrowerName != null and borrowerName != ''">
+                AND bc.borrowerName like concat('%', #{borrowerName}, '%')
+            </if>
+
+            <if test="bookName != null and bookName != ''">
+                AND bc.bookName like concat('%', #{bookName}, '%')
+            </if>
+
+            <if test="id != null and id != ''">
+                AND bc.id = #{id}
+            </if>
+        </where>
+    </select>
+
+    <insert id="addBorrowRecord" parameterType="BorrowRecord" useGeneratedKeys="true" keyProperty="id">
+        insert into borrow_record (book_name, borrower_name, borrow_date, due_date, status, remark)
+        values (#{bookName}, #{borrowerName}, #{borrowDate},#{dueDate},#{status},#{remark});
+    </insert>
+
+    <update id="editBorrowRecord" parameterType="BorrowRecordEditDto">
+        update borrow_record
+        <set>
+            <if test="returnDate != null">return_date = #{returnDate},</if>
+            <if test="remark != null and remark != ''">remark = #{remark},</if>
+            <if test="status != null">status = #{status}</if>
+        </set>
+        where id = #{id}
+    </update>
+
+<!--    <resultMap type="borrowRecordSelectDTO" id="bookBorrowRecord">-->
+<!--        <result property="" column=""/>-->
+<!--        <collection property="" resultMap=""/>-->
+<!--    </resultMap>-->
+<!--    -->
+<!--    <resultMap id="" type=""-->
+
+<!--    <select id="selectBookBorrowRecord" parameterType="borrowRecordSelectDTO" resultMap="bookBorrowRecord"></select>-->
+
+</mapper>

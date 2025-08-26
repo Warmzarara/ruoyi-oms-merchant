@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BookMapper">
+    <resultMap id="bookList" type="BookBookTagVo">
+        <result column="book_Id" property="bookId"/>
+        <result column="title" property="title"/>
+        <result column="author" property="author"/>
+        <result column="publisher" property="publisher"/>
+        <result column="isbn" property="isbn"/>
+        <collection property="bookTagVoList" resultMap="booktag"/>
+    </resultMap>
+
+    <resultMap id="booktag" type="BookTagVo">
+        <result property="booktagId" column="booktag_id"/>
+        <result property="tagName" column="tag_name"/>
+        <result property="status" column="status"/>
+    </resultMap>
+
+    <select id="selectBookList" parameterType="SysBookReq" resultMap="bookList">
+        select sb.book_id,
+               sb.title,
+               sb.author,
+               sb.publisher,
+               sb.isbn,
+               sbb.book_booktag_id,
+               sbb.book_id,
+               sbb.booktag_id,
+               sbb.status,
+               sbt.booktag_id,
+               sbt.tag_name,
+               sbt.status
+        from sys_book sb
+                 left join sys_book_booktag sbb on sb.book_id = sbb.book_id
+                 left join sys_booktag sbt on sbb.booktag_id = sbt.booktag_id
+        <where>
+            <if test="title != null and title != ''">AND sb.title LIKE CONCAT('%',#{title},'%')</if>
+            <if test="author != null and author != ''">AND sb.author LIKE CONCAT('%',#{author},'%')</if>
+            <if test="bookTag != null and bookTag != ''">AND sbt.tag_name LIKE CONCAT('%',#{bookTag},'%')</if>
+        </where>
+    </select>
+
+    <insert id="insertBook" parameterType="SysBook" useGeneratedKeys="true" keyProperty="bookId">
+        insert into sys_book (book_id, title, author, publisher, isbn)
+        values (#{bookId},#{title},#{author},#{publisher},#{isbn});
+    </insert>
+
+    <update id="updateBook" parameterType="SysBook">
+        update sys_book
+        <set>
+            <if test="title != null and title != ''">title = #{title},</if>
+            <if test="author != null and author != ''">author = #{author},</if>
+            <if test="publisher != null and publisher != ''">publisher = #{publisher},</if>
+            <if test="isbn != null and isbn != ''">isbn = #{isbn},</if>
+        </set>
+        where book_id = #{bookId}
+    </update>
+</mapper>
