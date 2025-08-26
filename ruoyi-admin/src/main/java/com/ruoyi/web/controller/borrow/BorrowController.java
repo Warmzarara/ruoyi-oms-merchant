@@ -69,6 +69,9 @@ public class BorrowController extends BaseController {
 
     @PostMapping("/exportBookList")
     public void export(HttpServletResponse response, SysBookReq book){
+        System.out.println("aaa");
+        System.out.println("aaa");
+        System.out.println("aaa");
         bookService.expertBookList(response,book);
         AjaxResult.success();
     }
