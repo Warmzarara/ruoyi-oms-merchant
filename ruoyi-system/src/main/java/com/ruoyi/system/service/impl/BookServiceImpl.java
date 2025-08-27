@@ -9,16 +9,21 @@ import com.ruoyi.common.utils.bean.BeanUtils;
 import com.ruoyi.common.utils.bean.BeanValidators;
 import com.ruoyi.common.utils.poi.ExcelUtil;
 import com.ruoyi.system.domain.SysBook;
+import com.ruoyi.system.domain.SysBookBooktag;
+import com.ruoyi.system.domain.dto.BookBooktagDto;
 import com.ruoyi.system.domain.dto.BookExcelDto;
 import com.ruoyi.system.domain.req.SysBookReq;
+import com.ruoyi.system.domain.req.SysBookTagReq;
 import com.ruoyi.system.domain.vo.BookBookTagVo;
 import com.ruoyi.system.domain.vo.BookTagVo;
 import com.ruoyi.system.mapper.BookMapper;
+import com.ruoyi.system.mapper.dto.BookTagPair;
 import com.ruoyi.system.service.IBookService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
@@ -135,4 +140,39 @@ public class BookServiceImpl implements IBookService {
         }
         return successMsg.toString();
     }
+
+    @Transactional(rollbackFor = RuntimeException.class)
+    @Override
+    public void insertBookTags(List<SysBookTagReq> sysBookTagReqs) {
+        //校验图书id是否存在
+        List<Long> bookIds = sysBookTagReqs.stream().map(SysBookTagReq::getBookId).collect(Collectors.toList());
+        List<BookBookTagVo> bookBookTagVos = bookMapper.selectBookListByIds(bookIds);
+        //todo 这里的错误信息太简单，要求返回那些书不存在
+        if (CollectionUtil.isEmpty(bookBookTagVos)) {
+            throw new ServiceException("系统数据异常");
+        }
+        BookBooktagDto bookBooktagDto = new BookBooktagDto();
+        bookBooktagDto.setBookIdList(bookIds);
+        List<SysBookBooktag> sysBookBooktags = bookMapper.selectBookBooktagList(bookBooktagDto);
+
+        //todo 这里contains可以优化，流可以拆分为筛选和优化两批处理
+        //将嵌套结构扁平化，插入到关系表
+        List<SysBookBooktag> sysBookBooktagList = sysBookTagReqs.stream()
+                .flatMap(req -> req.getTagIds().stream()
+                        .map(tagId -> {
+                            SysBookBooktag sysBookBooktag = new SysBookBooktag();
+                            sysBookBooktag.setBookId(req.getBookId());
+                            sysBookBooktag.setBooktagId(tagId);
+                            sysBookBooktag.setStatus(1);
+                            return sysBookBooktag;
+                        }))
+                .filter(bookBooktag -> !sysBookBooktags.contains(bookBooktag))
+                .collect(Collectors.toList());
+        if (CollectionUtil.isNotEmpty(sysBookBooktagList)) {
+            bookMapper.insertBookBooktag(sysBookBooktagList);
+        }else {
+            log.info("没有新增的标签");
+        }
+    }
+
 }

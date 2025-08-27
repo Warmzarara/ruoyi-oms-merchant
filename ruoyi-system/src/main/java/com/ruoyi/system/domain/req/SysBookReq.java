@@ -4,6 +4,8 @@ import lombok.Data;
 
 @Data
 public class SysBookReq {
+    //主键id
+    private Long bookId;
     //书名
     private String title;
     //作者

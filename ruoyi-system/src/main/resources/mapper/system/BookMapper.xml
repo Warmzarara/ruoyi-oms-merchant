@@ -35,10 +35,33 @@
                  left join sys_book_booktag sbb on sb.book_id = sbb.book_id
                  left join sys_booktag sbt on sbb.booktag_id = sbt.booktag_id
         <where>
+            <if test="bookId ！= null">AND sb.book_id = #{bookId}</if>
             <if test="title != null and title != ''">AND sb.title LIKE CONCAT('%',#{title},'%')</if>
             <if test="author != null and author != ''">AND sb.author LIKE CONCAT('%',#{author},'%')</if>
             <if test="bookTag != null and bookTag != ''">AND sbt.tag_name LIKE CONCAT('%',#{bookTag},'%')</if>
         </where>
+    </select>
+
+    <select id="selectBookListByIds" parameterType="java.util.List" resultMap="bookList">
+        select sb.book_id,
+        sb.title,
+        sb.author,
+        sb.publisher,
+        sb.isbn,
+        sbb.book_booktag_id,
+        sbb.book_id,
+        sbb.booktag_id,
+        sbb.status,
+        sbt.booktag_id,
+        sbt.tag_name,
+        sbt.status
+        from sys_book sb
+        left join sys_book_booktag sbb on sb.book_id = sbb.book_id
+        left join sys_booktag sbt on sbb.booktag_id = sbt.booktag_id
+        where sb.book_id in
+        <foreach collection="bookIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </select>
 
     <insert id="insertBook" parameterType="SysBook" useGeneratedKeys="true" keyProperty="bookId">
@@ -56,4 +79,41 @@
         </set>
         where book_id = #{bookId}
     </update>
+
+    <insert id="deleteBookById" useGeneratedKeys="true" parameterType="SysBookBooktag" keyProperty="bookBooktagId">
+        insert into sys_book_booktag (book_id, booktag_id, status)
+        values
+        <foreach collection="allPairs" item="pair" separator=",">
+            (#{pair.bookId}, #{pair.tagId})
+        </foreach>
+        ;
+    </insert>
+
+    <select id="selectBookBooktagList" parameterType="BookBooktagDto" resultType="SysBookBooktag">
+        select sbb.book_booktag_id, sbb.book_id, sbb.booktag_id, sbb.status
+        from sys_book_booktag sbb
+        <where>
+            <if test="bookBooktagId != null">and book_booktag_id = #{bookBooktagId}</if>
+            <choose>
+                <when test="bookId != null">
+                    AND book_id = #{bookId}
+                </when>
+                <when test="bookIdList != null and bookIdList.size() > 0">
+                    AND book_id IN
+                    <foreach collection="bookIdList" item="bookId" open="(" separator="," close=")">
+                        #{bookId}
+                    </foreach>
+                </when>
+            </choose>
+            <if test="tagId != null">and tag_id = #{tagId}</if>
+        </where>
+    </select>
+
+    <insert id="insertBookBooktag" parameterType="java.util.List" useGeneratedKeys="true">
+        insert into sys_book_booktag (book_id, booktag_id, status)
+        values
+            <foreach collection="sysBookBooktagList" item="sysBookBooktag" separator=",">
+                (#{sysBookBooktag.bookId},#{sysBookBooktag.booktagId},#{sysBookBooktag.status})
+            </foreach>
+    </insert>
 </mapper>
