@@ -2,7 +2,7 @@ package com.ruoyi.common.exception;
 
 /**
  * 业务异常
- * 
+ *
  * @author ruoyi
  */
 public final class ServiceException extends RuntimeException
@@ -20,9 +20,13 @@ public final class ServiceException extends RuntimeException
     private String message;
 
     /**
+     * 错误信息对象
+     */
+    private Object data;
+
+    /**
      * 错误明细，内部调试错误
      *
-     * 和 {@link CommonResult#getDetailMessage()} 一致的设计
      */
     private String detailMessage;
 
@@ -44,6 +48,19 @@ public final class ServiceException extends RuntimeException
         this.code = code;
     }
 
+    public ServiceException(String message, Integer code, Object data)
+    {
+        this.message = message;
+        this.code = code;
+        this.data = data;
+    }
+
+    public ServiceException(Integer code, Object data)
+    {
+        this.code = code;
+        this.data = data;
+    }
+
     public String getDetailMessage()
     {
         return detailMessage;
@@ -60,6 +77,11 @@ public final class ServiceException extends RuntimeException
         return code;
     }
 
+    public Object getData()
+    {
+        return data;
+    }
+
     public ServiceException setMessage(String message)
     {
         this.message = message;
@@ -69,6 +91,12 @@ public final class ServiceException extends RuntimeException
     public ServiceException setDetailMessage(String detailMessage)
     {
         this.detailMessage = detailMessage;
+        return this;
+    }
+
+    public ServiceException setData(Object data)
+    {
+        this.data = data;
         return this;
     }
 }
