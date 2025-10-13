@@ -98,4 +98,9 @@ public class BorrowController extends BaseController {
         bookService.insertBookTags(sysBookTagReqList);
         return AjaxResult.success();
     }
+
+    @GetMapping("/exportBookDataZip")
+    public AjaxResult exportBookDataZip(){
+        return AjaxResult.success();
+    }
 }
