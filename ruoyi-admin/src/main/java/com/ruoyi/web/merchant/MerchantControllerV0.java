@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/merchant")
-public class MerchantController {
+public class MerchantControllerV0 {
     @GetMapping("/export")
     public AjaxResult exportMerchantDetailToZip(){
         return AjaxResult.success();

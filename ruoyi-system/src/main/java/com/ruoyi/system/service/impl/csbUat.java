@@ -18,6 +18,9 @@
 //
 //import com.alibaba.csb.sdk.HttpCaller;
 //
+///**
+// * 抖音亲情寄 测试类
+// */
 //
 //public class csbUat {
 //

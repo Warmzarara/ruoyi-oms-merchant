@@ -11,7 +11,7 @@ public class ExportMerchantServiceImpl implements ExportMerchantService {
 
     @Override
     public void exportMerchant(ApplyDownloadLog applyDownloadLog) {
-        List<String> list = JSONUtil.toList(applyDownloadLog.getQuery_cond(), String.class);
+//        List<String> list = JSONUtil.toList(applyDownloadLog.getQuery_cond(), String.class);
         //获取申请明细
 
         //生成明细文件夹，文件下下包含Excel和图片
