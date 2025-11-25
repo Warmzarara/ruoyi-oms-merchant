@@ -1,11 +1,13 @@
 package com.ruoyi.merchant.domain;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 
 @Data
+@TableName("T_REFUND")
 public class Refund {
     /** 唯一键 */
     private String id;

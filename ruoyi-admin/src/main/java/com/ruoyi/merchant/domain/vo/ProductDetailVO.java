@@ -1,6 +1,7 @@
 package com.ruoyi.merchant.domain.vo;
 
 import com.ruoyi.merchant.domain.ProductImage;
+import lombok.Builder;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -9,7 +10,7 @@ import java.util.List;
 @Data
 public class ProductDetailVO {
     /** 唯一键 */
-    private String id;
+    private String productId;
     /** 商品标题 */
     private String title;
     /** 商品描述 */

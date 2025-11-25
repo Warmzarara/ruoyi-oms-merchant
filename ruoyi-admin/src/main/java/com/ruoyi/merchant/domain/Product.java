@@ -1,13 +1,17 @@
 package com.ruoyi.merchant.domain;
 
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 
 @Data
+@TableName("T_PRODUCT")
 public class Product {
     /** 唯一键 */
+    @TableId
     private String id;
     /** 商品标题 */
     private String title;

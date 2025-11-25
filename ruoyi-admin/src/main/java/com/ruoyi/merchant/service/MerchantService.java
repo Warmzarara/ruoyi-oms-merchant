@@ -1,17 +1,14 @@
 package com.ruoyi.merchant.service;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.ruoyi.merchant.domain.req.MerchantDetailReq;
 import com.ruoyi.merchant.domain.req.ProductListReq;
+import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 
 import java.util.List;
 
 public interface MerchantService {
-    IPage<ProductListVO> findProductList(ProductListReq merchantListReq);
-    MerchantDetailReq findMerchantDetail();
+    List<ProductListVO> findProductList(ProductListReq merchantListReq);
+    ProductDetailVO findProductDetail(String productId);
     void addMerchant();
     void updateMerhcantStatus();
-    
 }

@@ -1,6 +1,8 @@
 package com.ruoyi.system.mapper;
 
 import java.util.List;
+
+import com.github.yulichang.base.MPJBaseMapper;
 import com.ruoyi.system.domain.SysConfig;
 
 /**
@@ -8,7 +10,7 @@ import com.ruoyi.system.domain.SysConfig;
  * 
  * @author ruoyi
  */
-public interface SysConfigMapper
+public interface SysConfigMapper extends MPJBaseMapper<SysConfig>
 {
     /**
      * 查询参数配置信息

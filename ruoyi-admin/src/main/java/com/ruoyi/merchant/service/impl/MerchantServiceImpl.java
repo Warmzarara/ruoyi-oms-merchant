@@ -2,14 +2,14 @@ package com.ruoyi.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ruoyi.common.enums.YesNoEnum;
+import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.merchant.domain.Product;
 import com.ruoyi.merchant.domain.ProductImage;
-import com.ruoyi.merchant.domain.req.MerchantDetailReq;
 import com.ruoyi.merchant.domain.req.ProductListReq;
+import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 import com.ruoyi.merchant.manager.ProductImageManager;
 import com.ruoyi.merchant.manager.ProductManager;
@@ -35,21 +35,57 @@ public class MerchantServiceImpl implements MerchantService {
      * 查询商品列表
      */
     @Override
-    public Page<ProductListVO> findProductList(ProductListReq req) {
+    public List<ProductListVO> findProductList(ProductListReq req) {
         Product product = new Product();
         BeanUtil.copyProperties(req, product);
-        //  分页参数
-        int pageNo = req.getPageNo();
-        int pageSize = req.getPageSize();
         // 通过分页获取商品数据
-        IPage<Product> productListPage = productManager.findProductList(product, pageNo, pageSize);
-        List<Product> productList = productListPage.getRecords();
+        List<Product> productList = productManager.findProductList(product);
         if (CollUtil.isEmpty(productList)) {
-            return new Page<>(pageNo, pageSize);
+            return new ArrayList<>();
         }
         //  封装商品列表响应数据
-        List<ProductListVO> productListVOList = buildProductListVOList(productList);
-        return new Page<ProductListVO>(pageNo, pageSize, productListPage.getTotal()).setRecords(productListVOList);
+        return buildProductListVOList(productList);
+    }
+    
+    /**
+     * 查询商品详情
+     * @param productId
+     * @return
+     */
+    @Override
+    public ProductDetailVO findProductDetail(String productId) {
+        // 得到扁平的单个商品详情数据
+        Product product = productManager.findProductById(productId);
+        if (ObjUtil.isNull(product)) {
+            throw new ServiceException("该商品不存在");
+        }
+        List<ProductImage> productImgList = productManager.findProductImgListByPrdId(productId);
+        if (CollUtil.isEmpty(productImgList)) {
+            throw new ServiceException("该商品不存在图片信息");
+        }
+        // 获取首页展示图片
+        String displayImg = getDisplayImg(productImgList);
+        // 开始封装响应对象
+        ProductDetailVO productDetailVO = new ProductDetailVO();
+        BeanUtil.copyProperties(product, productDetailVO);
+        productDetailVO.setProductId(productId);
+        productDetailVO.setShowImgUrl(displayImg);
+        productDetailVO.setProductImageList(productImgList);
+        return productDetailVO;
+    }
+    
+    private String getDisplayImg(List<ProductImage> productImgList){
+        // 获取首页展示图片，如果未配置则提供图片列表中的第一张
+        ProductImage prdImg = productImgList.stream()
+                .filter(productImg -> 
+                        ObjUtil.isNotNull(productImg.getIsDisplay()) && 
+                        productImg.getIsDisplay().equals(YesNoEnum.YES.getCode()))
+                .findFirst()
+                .orElse(productImgList.get(0));
+        if (ObjUtil.isNotNull(prdImg) && StrUtil.isNotBlank(prdImg.getImageUrl())) {
+            return prdImg.getImageUrl();
+        }
+        throw new ServiceException("商品图片数据异常");
     }
 
     private List<ProductListVO> buildProductListVOList(List<Product> productList){
@@ -79,11 +115,6 @@ public class MerchantServiceImpl implements MerchantService {
         String showImgUrl = StrUtil.emptyIfNull(prdIdShowImgUrlMap.get(prd.getId()));
         productListVO.setImageUrl(showImgUrl);
         return productListVO;
-    }
-
-    @Override
-    public MerchantDetailReq findMerchantDetail() {
-        return null;
     }
 
     @Override

@@ -134,7 +134,7 @@
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-boot-starter</artifactId>
-            <version>3.4.3.4</version>
+            <version>3.5.4</version>
             <exclusions>
                 <!-- 排除 MyBatis-Spring 适配包 -->
                 <exclusion>

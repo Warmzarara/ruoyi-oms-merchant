@@ -1,10 +1,12 @@
 package com.ruoyi.merchant.domain;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
+@TableName("T_ADDRESS")
 public class Address {
     /** 唯一键 */
     private String id;

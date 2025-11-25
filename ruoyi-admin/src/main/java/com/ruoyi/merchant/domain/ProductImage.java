@@ -1,10 +1,12 @@
 package com.ruoyi.merchant.domain;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
+@TableName("T_PRODUCT_IMAGE")
 public class ProductImage {
     /** 唯一键 */
     private String id;
