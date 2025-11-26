@@ -2,13 +2,17 @@ package com.ruoyi.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.merchant.domain.Product;
 import com.ruoyi.merchant.domain.ProductImage;
+import com.ruoyi.merchant.domain.dto.ProductImgDTO;
+import com.ruoyi.merchant.domain.req.ProductAddReq;
 import com.ruoyi.merchant.domain.req.ProductListReq;
+import com.ruoyi.merchant.domain.req.ProductStatusReq;
 import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 import com.ruoyi.merchant.manager.ProductImageManager;
@@ -16,6 +20,7 @@ import com.ruoyi.merchant.manager.ProductManager;
 import com.ruoyi.merchant.service.MerchantService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.util.*;
@@ -74,6 +79,50 @@ public class MerchantServiceImpl implements MerchantService {
         return productDetailVO;
     }
     
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void addProduct(ProductAddReq productAddReq){
+        // 校验并获取图片列表数据
+        List<ProductImgDTO> prdImgDTOList = validAndGetImgList(productAddReq);
+        Product product = new Product();
+        BeanUtil.copyProperties(productAddReq, product);
+        String savePrdId = IdUtil.fastSimpleUUID();
+        product.setId(savePrdId);
+        if (!productManager.save(product)) {
+            throw new ServiceException("商品数据新增失败");
+        }
+        // 处理图片数据
+        Integer yesCode = YesNoEnum.YES.getCode();
+        Integer noCode = YesNoEnum.NO.getCode();
+        boolean hasDisplayImg = prdImgDTOList.stream().anyMatch(img -> ObjUtil.equals(img.getIsDisplay(), yesCode));
+        if (!hasDisplayImg) {
+            prdImgDTOList.get(0).setIsDisplay(yesCode);
+        }
+
+        List<ProductImage> savePrdImgList = prdImgDTOList.stream().map(img -> {
+            ProductImage savePrdImg = new ProductImage();
+            savePrdImg.setId(IdUtil.fastSimpleUUID());
+            savePrdImg.setProductId(savePrdId);
+            savePrdImg.setImageUrl(img.getImageUrl());
+            savePrdImg.setDisplayOrder(img.getDisplayOrder());
+            savePrdImg.setIsDisplay(img.getIsDisplay());
+            savePrdImg.setIsDisplay(ObjUtil.defaultIfNull(img.getIsDisplay(), noCode));
+            return savePrdImg;
+        }).collect(Collectors.toList());
+        
+        if (!productImageManager.saveBatch(savePrdImgList)) {
+            throw new ServiceException("商品图片数据更新失败，商品新增失败");
+        }
+    }
+    
+    private List<ProductImgDTO> validAndGetImgList(ProductAddReq productAddReq){
+        List<ProductImgDTO> dtoList = productAddReq.getPrdImgList();
+        if (CollUtil.isEmpty(dtoList)) {
+            throw new ServiceException("图片数据为空，请至少上传一张图片");
+        }
+        return dtoList;
+    }
+    
     private String getDisplayImg(List<ProductImage> productImgList){
         // 获取首页展示图片，如果未配置则提供图片列表中的第一张
         ProductImage prdImg = productImgList.stream()
@@ -116,14 +165,14 @@ public class MerchantServiceImpl implements MerchantService {
         productListVO.setImageUrl(showImgUrl);
         return productListVO;
     }
-
+    
     @Override
-    public void addMerchant() {
-
-    }
-
-    @Override
-    public void updateMerhcantStatus() {
-
+    public void updateProductStatus(ProductStatusReq productStatusReq) {
+        Product product = new Product();
+        product.setStatus(productStatusReq.getStatus());
+        product.setId(productStatusReq.getProductId());
+        if (!productManager.updateById(product)) {
+            throw new ServiceException("商品状态修改失败");
+        }
     }
 }
