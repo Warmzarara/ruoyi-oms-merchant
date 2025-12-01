@@ -7,16 +7,16 @@ import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.merchant.domain.Product;
 import com.ruoyi.merchant.domain.ProductImage;
 import com.ruoyi.merchant.domain.dto.ProductImgDTO;
-import com.ruoyi.merchant.domain.req.ProductAddReq;
-import com.ruoyi.merchant.domain.req.ProductListReq;
-import com.ruoyi.merchant.domain.req.ProductStatusReq;
+import com.ruoyi.merchant.domain.req.*;
 import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 import com.ruoyi.merchant.manager.ProductImageManager;
 import com.ruoyi.merchant.manager.ProductManager;
+import com.ruoyi.merchant.manager.UserManager;
 import com.ruoyi.merchant.service.MerchantService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +35,9 @@ public class MerchantServiceImpl implements MerchantService {
     
     @Resource
     ProductImageManager productImageManager;
+    
+    @Resource
+    UserManager userManager;
 
     /**
      * 查询商品列表
@@ -88,6 +91,8 @@ public class MerchantServiceImpl implements MerchantService {
         BeanUtil.copyProperties(productAddReq, product);
         String savePrdId = IdUtil.fastSimpleUUID();
         product.setId(savePrdId);
+        product.setCreatedUser(SecurityUtils.getUsername());
+        product.setCreatedTime(new Date());
         if (!productManager.save(product)) {
             throw new ServiceException("商品数据新增失败");
         }
@@ -107,6 +112,8 @@ public class MerchantServiceImpl implements MerchantService {
             savePrdImg.setDisplayOrder(img.getDisplayOrder());
             savePrdImg.setIsDisplay(img.getIsDisplay());
             savePrdImg.setIsDisplay(ObjUtil.defaultIfNull(img.getIsDisplay(), noCode));
+            savePrdImg.setCreatedTime(new Date());
+            savePrdImg.setCreatedUser(SecurityUtils.getUsername());
             return savePrdImg;
         }).collect(Collectors.toList());
         
@@ -117,6 +124,14 @@ public class MerchantServiceImpl implements MerchantService {
     
     private List<ProductImgDTO> validAndGetImgList(ProductAddReq productAddReq){
         List<ProductImgDTO> dtoList = productAddReq.getPrdImgList();
+        if (CollUtil.isEmpty(dtoList)) {
+            throw new ServiceException("图片数据为空，请至少上传一张图片");
+        }
+        return dtoList;
+    }
+
+    private List<ProductImgDTO> validAndGetImgList(ProductEditReq productEditReq){
+        List<ProductImgDTO> dtoList = productEditReq.getPrdImgList();
         if (CollUtil.isEmpty(dtoList)) {
             throw new ServiceException("图片数据为空，请至少上传一张图片");
         }
@@ -171,8 +186,48 @@ public class MerchantServiceImpl implements MerchantService {
         Product product = new Product();
         product.setStatus(productStatusReq.getStatus());
         product.setId(productStatusReq.getProductId());
+        product.setUpdatedTime(new Date());
+        product.setUpdatedUser(SecurityUtils.getUsername());
         if (!productManager.updateById(product)) {
             throw new ServiceException("商品状态修改失败");
         }
+    }
+
+    @Transactional
+    @Override
+    public void updateProductDetail(ProductEditReq productEditReq) {
+        String prdId = productEditReq.getProductId();
+        Product product = new Product();
+        BeanUtil.copyProperties(productEditReq, product);
+        product.setId(prdId);
+        product.setUpdatedUser(SecurityUtils.getUsername());
+        product.setUpdatedTime(new Date());
+        if (!productManager.updateById(product)) {
+            throw new ServiceException("商品信息修改失败");
+        }
+        List<ProductImgDTO> productImgDTOList = validAndGetImgList(productEditReq);
+        List<ProductImage> prodductImageList = productImgDTOList.stream().map(imgDto -> {
+            ProductImage productImage = new ProductImage();
+            BeanUtil.copyProperties(imgDto, productImage);
+            productImage.setProductId(prdId);
+            productImage.setUpdatedTime(new Date());
+            productImage.setUpdatedUser(SecurityUtils.getUsername());
+            return productImage;
+        }).collect(Collectors.toList());
+        if (!productImageManager.updateBatchById(prodductImageList)) {
+            throw new ServiceException("商品信息修改失败，图片数据修改失败");
+        }
+    }
+
+    @Override
+    public void merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
+        // 校验用户状态是否正常
+//        userManager.getById()
+        // 开始循环
+        // 判断商品是否存在并且是上架状态
+        // 执行商品减少库存的更新操作
+        // 更新条数是否等于1
+        // 插入订单信息
+        // 插入订单详情信息
     }
 }

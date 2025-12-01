@@ -1,9 +1,11 @@
 package com.ruoyi.merchant.domain;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Data
 @TableName("T_PRODUCT_IMAGE")
@@ -23,9 +25,11 @@ public class ProductImage {
     /** 创建人 */
     private String createdUser;
     /** 创建时间 */
-    private LocalDateTime createdTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date createdTime;
     /** 更新人 */
     private String updatedUser;
     /** 更新时间 */
-    private LocalDateTime updatedTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date updatedTime;
 }

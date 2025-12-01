@@ -2,10 +2,11 @@ package com.ruoyi.merchant.domain;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
-import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.Date;
 
 @Data
 @TableName("T_PRODUCT")
@@ -28,9 +29,11 @@ public class Product {
     /** 创建人 */
     private String createdUser;
     /** 创建时间 */
-    private LocalDateTime createdTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date createdTime;
     /** 更新人 */
     private String updatedUser;
     /** 更新时间 */
-    private LocalDateTime updatedTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date updatedTime;
 }
