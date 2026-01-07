@@ -7,5 +7,6 @@ import java.util.List;
 
 public interface ProductImageManager extends MPJBaseService<ProductImage> {
     List<ProductImage> findProductImagesByProductIds(List<String> productIds);
+    List<ProductImage> getShowImageListByPrdId(String prdId);
 //    List<String> findShowImgUrlListByProductIds(List<String> productIds);
 }

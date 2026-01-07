@@ -3,6 +3,7 @@ package com.ruoyi.merchant.controller;
 import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.merchant.domain.req.*;
+import com.ruoyi.merchant.domain.vo.OrderCreateVO;
 import com.ruoyi.merchant.service.MerchantService;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.validation.annotation.Validated;
@@ -54,6 +55,7 @@ public class MerchantController extends BaseController {
     
     @PostMapping("/merchantCreateOrder")
     public AjaxResult createOrder(@RequestBody MerchantOrderCreateReq merchantOrderCreateReq){
-        return success();
+        OrderCreateVO orderCreateVO = merchantService.merchantOrderCreate(merchantOrderCreateReq);
+        return success(orderCreateVO);
     }
 }

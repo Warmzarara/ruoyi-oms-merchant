@@ -159,6 +159,18 @@ public class AjaxResult extends HashMap<String, Object>
     }
 
     /**
+     * 返回错误消息和数据
+     *
+     * @param msg 返回内容
+     * @param data 数据对象
+     * @return 错误消息
+     */
+    public static AjaxResult error(String code, String msg, Object data)
+    {
+        return new AjaxResult(Integer.parseInt(code), msg, data);
+    }
+
+    /**
      * 返回错误消息
      * 
      * @param code 状态码

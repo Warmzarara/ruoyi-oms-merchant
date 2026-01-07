@@ -1,6 +1,7 @@
 package com.ruoyi.merchant.service;
 
 import com.ruoyi.merchant.domain.req.*;
+import com.ruoyi.merchant.domain.vo.OrderCreateVO;
 import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 
@@ -12,5 +13,5 @@ public interface MerchantService {
     void addProduct(ProductAddReq productAddReq);
     void updateProductStatus(ProductStatusReq productStatusReq);
     void updateProductDetail(ProductEditReq productEditReq);
-    void merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq);
+    OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq);
 }
