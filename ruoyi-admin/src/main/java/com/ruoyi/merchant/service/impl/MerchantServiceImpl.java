@@ -270,7 +270,7 @@ public class MerchantServiceImpl implements MerchantService {
         productImageManager.removeByPrdIds(CollUtil.newArrayList(prdId));
         // 校验并获取请求图片列表
         List<ProductImgDTO> productImgDTOList = validAndGetImgList(productEditReq);
-        // 组装入库图片列表
+        // 组装入库商品图片列表
         List<ProductImage> productImageList = productImgDTOList.stream()
                 .map(imgDto -> assembleDbProductImage(imgDto, prdId))
                 .collect(Collectors.toList());
@@ -300,6 +300,8 @@ public class MerchantServiceImpl implements MerchantService {
         ProductImage productImage = new ProductImage();
         productImage.setId(IdUtil.fastSimpleUUID());
         productImage.setProductId(prdId);
+        productImage.setCreatedUser(SecurityUtils.getUsername());
+        productImage.setCreatedTime(new Date());
         productImage.setUpdatedTime(new Date());
         productImage.setUpdatedUser(SecurityUtils.getUsername());
         productImage.setImageUrl(imgDto.getImageUrl());
