@@ -169,6 +169,19 @@ token:
 mybatis-plus:
   type-aliases-package: com.ruoyi.**.domain
   mapper-locations: classpath*:mapper/**/*Mapper.xml
+  
+  global-config:
+    db-config:
+      # 1. 这里填你实体类中代表删除状态的属性名 (比如 deleted 或 delFlag)
+      #    注意：如果你的字段叫 isDeleted，这里就填 isDeleted
+      logic-delete-field: deleted
+      
+      # 2. 逻辑已删除值 (默认为 1)
+      logic-delete-value: 1
+      
+      # 3. 逻辑未删除值 (默认为 0)
+      logic-not-delete-value: 0
+  
   configuration:
     cache-enabled: true
     use-generated-keys: true

@@ -1,8 +1,10 @@
 package com.ruoyi.merchant.manager.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.github.yulichang.base.MPJBaseServiceImpl;
 import com.github.yulichang.query.MPJLambdaQueryWrapper;
+import com.github.yulichang.wrapper.DeleteJoinWrapper;
 import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.merchant.mapper.ProductImageMapper;
@@ -33,6 +35,13 @@ public class ProductImageManagerImpl extends MPJBaseServiceImpl<ProductImageMapp
                 .eq(ProductImage::getIsDeleted, YesNoEnum.NO.getCode())
                 .eq(ProductImage::getIsDisplay, YesNoEnum.YES.getCode());
         return this.list(productImageLambdaQueryWrapper);
+    }
+    
+    @Override
+    public boolean removeByPrdIds(List<String> prdIds) {
+        LambdaQueryWrapper<ProductImage> productImageLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        productImageLambdaQueryWrapper.in(ProductImage::getProductId, prdIds);
+        return this.remove(productImageLambdaQueryWrapper);
     }
 
 

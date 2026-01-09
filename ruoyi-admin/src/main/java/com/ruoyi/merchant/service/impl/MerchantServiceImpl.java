@@ -19,11 +19,13 @@ import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
 import com.ruoyi.merchant.enums.CustomerStatusEnum;
 import com.ruoyi.merchant.enums.OrderStatusEnum;
+import com.ruoyi.merchant.factory.PriceStrategyFactory;
 import com.ruoyi.merchant.manager.OrderManager;
 import com.ruoyi.merchant.manager.ProductImageManager;
 import com.ruoyi.merchant.manager.ProductManager;
 import com.ruoyi.merchant.manager.CustomerManager;
 import com.ruoyi.merchant.service.MerchantService;
+import com.ruoyi.merchant.strategy.PriceCalculatorStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,49 +56,71 @@ public class MerchantServiceImpl implements MerchantService {
     @Resource
     OrderProdcutManager orderProductManager;
 
+    @Resource
+    private PriceStrategyFactory priceStrategyFactory;
+
     /**
      * 查询商品列表
      */
     @Override
     public List<ProductListVO> findProductList(ProductListReq req) {
-        Product product = new Product();
-        BeanUtil.copyProperties(req, product);
-        // 通过分页获取商品数据
-        List<Product> productList = productManager.findProductList(product);
+        List<Product> productList = getDbProducts(req);
         if (CollUtil.isEmpty(productList)) {
             return new ArrayList<>();
         }
         //  封装商品列表响应数据
         return buildProductListVOList(productList);
     }
-    
+
+    private List<Product> getDbProducts(ProductListReq req) {
+        Product product = new Product();
+        BeanUtil.copyProperties(req, product);
+        // 通过分页获取商品数据
+        return productManager.findProductList(product);
+    }
+
     /**
      * 查询商品详情
-     * @param productId
-     * @return
+     * @param productId 商品id
+     * @return 商品详情
      */
     @Override
     public ProductDetailVO findProductDetail(String productId) {
         // 得到扁平的单个商品详情数据
-        Product product = productManager.findProductById(productId);
-        if (ObjUtil.isNull(product)) {
-            throw new ServiceException("该商品不存在");
-        }
-        List<ProductImage> productImgList = productManager.findProductImgListByPrdId(productId);
-        if (CollUtil.isEmpty(productImgList)) {
-            throw new ServiceException("该商品不存在图片信息");
-        }
-        // 获取首页展示图片
-        String displayImg = getDisplayImg(productImgList);
-        // 开始封装响应对象
+        Product product = getDbProductById(productId);
+        // 获取商品图片数据
+        List<ProductImage> productImgList = getDbProductImagesByPrdId(productId);
+        // 组装响应对象
+        return assembleProductDetailVO(productId, product, productImgList);
+    }
+
+    private ProductDetailVO assembleProductDetailVO(String productId, Product product, List<ProductImage> productImgList) {
         ProductDetailVO productDetailVO = new ProductDetailVO();
         BeanUtil.copyProperties(product, productDetailVO);
         productDetailVO.setProductId(productId);
+        // 获取首页展示图片
+        String displayImg = getDisplayImg(productImgList);
         productDetailVO.setShowImgUrl(displayImg);
         productDetailVO.setProductImageList(productImgList);
         return productDetailVO;
     }
-    
+
+    private List<ProductImage> getDbProductImagesByPrdId(String productId) {
+        List<ProductImage> productImgList = productManager.findProductImgListByPrdId(productId);
+        if (CollUtil.isEmpty(productImgList)) {
+            throw new ServiceException("该商品不存在图片信息");
+        }
+        return productImgList;
+    }
+
+    private Product getDbProductById(String productId) {
+        Product product = productManager.findProductById(productId);
+        if (ObjUtil.isNull(product)) {
+            throw new ServiceException("该商品不存在");
+        }
+        return product;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addProduct(ProductAddReq productAddReq){
@@ -125,7 +149,6 @@ public class MerchantServiceImpl implements MerchantService {
             savePrdImg.setProductId(savePrdId);
             savePrdImg.setImageUrl(img.getImageUrl());
             savePrdImg.setDisplayOrder(img.getDisplayOrder());
-            savePrdImg.setIsDisplay(img.getIsDisplay());
             savePrdImg.setIsDisplay(ObjUtil.defaultIfNull(img.getIsDisplay(), noCode));
             savePrdImg.setCreatedTime(new Date());
             savePrdImg.setCreatedUser(SecurityUtils.getUsername());
@@ -211,28 +234,57 @@ public class MerchantServiceImpl implements MerchantService {
     @Transactional
     @Override
     public void updateProductDetail(ProductEditReq productEditReq) {
+        // 开始更新主表数据
+        updateDbProduct(productEditReq);
+        // 开始更新商品图片数据，采用全量更新
+        fullUpdateDbProductDetail(productEditReq);
+    }
+
+    private void fullUpdateDbProductDetail(ProductEditReq productEditReq) {
+        // 全量逻辑删除对应商品图片数据
         String prdId = productEditReq.getProductId();
-        Product product = new Product();
-        BeanUtil.copyProperties(productEditReq, product);
-        product.setId(prdId);
-        product.setUpdatedUser(SecurityUtils.getUsername());
-        product.setUpdatedTime(new Date());
-        if (!productManager.updateById(product)) {
-            throw new ServiceException("商品信息修改失败");
-        }
+        productImageManager.removeByPrdIds(CollUtil.newArrayList(prdId));
+        // 校验并获取请求图片列表
         List<ProductImgDTO> productImgDTOList = validAndGetImgList(productEditReq);
-        List<ProductImage> prodductImageList = productImgDTOList.stream().map(imgDto -> {
-            ProductImage productImage = new ProductImage();
-            BeanUtil.copyProperties(imgDto, productImage);
-            productImage.setProductId(prdId);
-            productImage.setUpdatedTime(new Date());
-            productImage.setUpdatedUser(SecurityUtils.getUsername());
-            return productImage;
-        }).collect(Collectors.toList());
-        if (!productImageManager.updateBatchById(prodductImageList)) {
+        // 组装入库图片列表
+        List<ProductImage> productImageList = productImgDTOList.stream()
+                .map(imgDto -> assembleDbProductImage(imgDto, prdId))
+                .collect(Collectors.toList());
+        // 插入商品图片数据
+        if (!productImageManager.saveBatch(productImageList)) {
             throw new ServiceException("商品信息修改失败，图片数据修改失败");
         }
     }
+
+    private void updateDbProduct(ProductEditReq productEditReq) {
+        Product product = assembleDbProduct(productEditReq);
+        if (!productManager.updateById(product)) {
+            throw new ServiceException("商品信息修改失败");
+        }
+    }
+
+    private static Product assembleDbProduct(ProductEditReq productEditReq) {
+        Product product = new Product();
+        BeanUtil.copyProperties(productEditReq, product);
+        product.setId(productEditReq.getProductId());
+        product.setUpdatedUser(SecurityUtils.getUsername());
+        product.setUpdatedTime(new Date());
+        return product;
+    }
+
+    private static ProductImage assembleDbProductImage(ProductImgDTO imgDto, String prdId) {
+        ProductImage productImage = new ProductImage();
+        productImage.setId(IdUtil.fastSimpleUUID());
+        productImage.setProductId(prdId);
+        productImage.setUpdatedTime(new Date());
+        productImage.setUpdatedUser(SecurityUtils.getUsername());
+        productImage.setImageUrl(imgDto.getImageUrl());
+        productImage.setIsDisplay(imgDto.getIsDisplay());
+        productImage.setDisplayOrder(imgDto.getDisplayOrder());
+        return productImage;
+    }
+
+
     @Transactional(rollbackFor = Exception.class)
     @Override
     public OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
@@ -292,18 +344,18 @@ public class MerchantServiceImpl implements MerchantService {
         Integer totalQuantity = orderProductDTOList.stream().mapToInt(OrderProductDTO::getNum).sum();
         order.setTotalQuantity(totalQuantity);
         // 计算订单总金额
+        // 获取商品id和商品对象的映射
         Map<String, Product> dbPrdMap = dbPrdList.stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
-        BigDecimal orderTotalPrice = new BigDecimal(0);
-        orderProductDTOList.forEach(orderPrdDTO -> {
-            Integer num = orderPrdDTO.getNum();
-            String productId = orderPrdDTO.getProductId();
-            Product product = dbPrdMap.get(productId);
-            BigDecimal price = product.getPrice();
-            BigDecimal onePrdTotal = NumberUtil.mul(num, price);
-            NumberUtil.add(orderTotalPrice, onePrdTotal);
-        });
-        order.setTotalPrice(orderTotalPrice);
+        // 开始计算总金额
+        BigDecimal originalOrderTotalPrice = orderProductDTOList.stream().map(dto -> {
+            Product product = dbPrdMap.get(dto.getProductId());
+            return NumberUtil.mul(product.getPrice(), dto.getNum());
+        }).reduce(BigDecimal.ZERO, NumberUtil::add);
+        // 策略+工厂 区分用户类型使用不同折扣计算总价
+        PriceCalculatorStrategy calcStrategy = priceStrategyFactory.getStrategyByCustomerType(customer.getCustomerType());
+        BigDecimal calculatedOrderTotalPrice = calcStrategy.calculate(originalOrderTotalPrice);
+        order.setTotalPrice(calculatedOrderTotalPrice);
         order.setId(orderId);
         order.setStatus(OrderStatusEnum.ORDER_CREATED.getCode());
         order.setRemark(merchantOrderCreateReq.getRemark());
@@ -341,7 +393,7 @@ public class MerchantServiceImpl implements MerchantService {
         orderCreateVO.setReceiverName(merchantOrderCreateReq.getReceiverName());
         orderCreateVO.setReceiverPhone(merchantOrderCreateReq.getReceiverPhone());
         orderCreateVO.setReceiverAddress(merchantOrderCreateReq.getReceiverAddress());
-        orderCreateVO.setTotalPrice(orderTotalPrice);
+        orderCreateVO.setTotalPrice(calculatedOrderTotalPrice);
 
         List<ProductListDTO> productListDTOs = orderProductDTOList.stream().map(dto -> {
             ProductListDTO productListDTO = new ProductListDTO();
