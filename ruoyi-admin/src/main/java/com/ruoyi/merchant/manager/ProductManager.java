@@ -4,6 +4,7 @@ import com.github.yulichang.base.MPJBaseService;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.merchant.domain.Product;
 import com.ruoyi.merchant.domain.ProductImage;
+import com.ruoyi.merchant.enums.CheckOnShelfEnum;
 
 import java.util.List;
 
@@ -14,6 +15,6 @@ public interface ProductManager extends MPJBaseService<Product> {
     List<ProductImage> findProductImgList(ProductImage productImage);
     List<ProductImage> findProductImgListByPrdId(String productId);
     Product findProductById(String productId);
-    List<Product> findProductByIds(List<String> productIds, YesNoEnum onlyOnShelf);
+    List<Product> findProductByIds(List<String> productIds, CheckOnShelfEnum onlyOnShelf);
     Boolean decreasePrdStock(String productId, Integer decreaseNum);
 }

@@ -17,6 +17,7 @@ import com.ruoyi.merchant.domain.req.*;
 import com.ruoyi.merchant.domain.vo.OrderCreateVO;
 import com.ruoyi.merchant.domain.vo.ProductDetailVO;
 import com.ruoyi.merchant.domain.vo.ProductListVO;
+import com.ruoyi.merchant.enums.CheckOnShelfEnum;
 import com.ruoyi.merchant.enums.CustomerStatusEnum;
 import com.ruoyi.merchant.enums.OrderStatusEnum;
 import com.ruoyi.merchant.factory.PriceStrategyFactory;
@@ -309,6 +310,30 @@ public class MerchantServiceImpl implements MerchantService {
         productImage.setDisplayOrder(imgDto.getDisplayOrder());
         return productImage;
     }
+    
+    private Customer validAndGetCustomer(String phone){
+        Customer customer = customerManager.getByPhone(phone);
+        if (ObjUtil.isNull(customer)) {
+            throw new ServiceException("客户信息不存在");
+        }
+        if (ObjUtil.isNull(customer.getUserStatus()) || ObjUtil.equals(userStatus, CustomerStatusEnum.ERR_STATUS)) {
+            throw new ServiceException("客户信息异常");
+        }
+        return customer;
+    }
+    
+    private void validProduct(MerchantOrderCreateReq merchantOrderCreateReq){
+        // 获取订单商品列表
+        List<OrderProductDTO> orderProductDTOList = merchantOrderCreateReq.getOrderProductDTOList();
+        // 获取请求体productId列表
+        List<String> reqPrdIds = getReqPrdIds(orderProductDTOList);
+    }
+
+    private static List<String> getReqPrdIds(List<OrderProductDTO> orderProductDTOList) {
+        return orderProductDTOList.stream()
+                .map(OrderProductDTO::getProductId)
+                .collect(Collectors.toList());
+    }
 
     /**
      * 商家端下单
@@ -318,26 +343,31 @@ public class MerchantServiceImpl implements MerchantService {
     @Transactional(rollbackFor = Exception.class)
     @Override
     public OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
-        // 校验用户状态是否正常
+        // 校验并获取客户信息
+        validAndGetCustomer(merchantOrderCreateReq.getReceiverPhone());
+        
+        // 校验商品（存在性，是否上架，获取商品Map）
+        
+        
+        // 扣减商品库存
+        
+        // 计算订单总金额
+        
+        // 组装保存订单数据
+        
+        // 组装响应数据并返回
+        
+        // 根据电话号码获取客户
         Customer customer = customerManager.getByPhone(merchantOrderCreateReq.getReceiverPhone());
-        if (ObjUtil.isNull(customer)) {
-            throw new ServiceException("客户信息不存在");
-        }
-        Integer userStatus = customer.getUserStatus();
-        if (ObjUtil.isNull(userStatus) || ObjUtil.equals(userStatus, CustomerStatusEnum.ERR_STATUS)) {
-            throw new ServiceException("客户信息异常");
-        }
+        // 校验客户状态
+        validCustomerStatus(customer);
         // 获取用户id
         String customerId = customer.getId();
+        // 获取订单商品列表
         List<OrderProductDTO> orderProductDTOList = merchantOrderCreateReq.getOrderProductDTOList();
-        if (CollUtil.isEmpty(orderProductDTOList)) {
-            throw new ServiceException("请添加商品后再下单");
-        }
         // 判断下单商品是否存在
-        List<String> prdIdList = orderProductDTOList.stream()
-                .map(OrderProductDTO::getProductId)
-                .collect(Collectors.toList());
-        List<Product> dbPrdList = productManager.findProductByIds(prdIdList, YesNoEnum.NO);
+        List<String> prdIdList = getReqPrdIds(orderProductDTOList);
+        List<Product> dbPrdList = productManager.findProductByIds(prdIdList, CheckOnShelfEnum.DONT_CHECK);
         Set<String> dbPrdIdSet = dbPrdList.stream().map(Product::getId).collect(Collectors.toSet());
         List<OrderProductDTO> notExistPrdList = orderProductDTOList.stream()
                 .filter(orderProductDTO -> !dbPrdIdSet.contains(orderProductDTO.getProductId()))
@@ -446,5 +476,15 @@ public class MerchantServiceImpl implements MerchantService {
         return orderCreateVO;
         // todo 暂时没做支付时间，支付方式，客户类型，先空着，后面再加
 
+    }
+
+    private static void validCustomerStatus(Customer customer) {
+        if (ObjUtil.isNull(customer)) {
+            throw new ServiceException("客户信息不存在");
+        }
+        Integer userStatus = customer.getUserStatus();
+        if (ObjUtil.isNull(userStatus) || ObjUtil.equals(userStatus, CustomerStatusEnum.ERR_STATUS)) {
+            throw new ServiceException("客户信息异常");
+        }
     }
 }

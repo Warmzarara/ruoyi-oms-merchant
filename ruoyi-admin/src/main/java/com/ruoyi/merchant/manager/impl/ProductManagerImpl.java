@@ -8,6 +8,7 @@ import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.merchant.domain.ProductImage;
+import com.ruoyi.merchant.enums.CheckOnShelfEnum;
 import com.ruoyi.merchant.enums.ProductStatusEnum;
 import com.ruoyi.merchant.manager.ProductImageManager;
 import com.ruoyi.merchant.mapper.ProductMapper;
@@ -68,10 +69,10 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
     }
 
     @Override
-    public List<Product> findProductByIds(List<String> productIds, YesNoEnum isCheckOnShelf) {
+    public List<Product> findProductByIds(List<String> productIds, CheckOnShelfEnum isCheckOnShelf) {
         MPJLambdaWrapper<Product> wrapper = new MPJLambdaWrapper<>();
         wrapper.eq(Product::getIsDeleted, YesNoEnum.NO.getCode());
-        if (isCheckOnShelf == YesNoEnum.YES) {
+        if (isCheckOnShelf == CheckOnShelfEnum.CHECK_ON_SHELF) {
             wrapper.eq(Product::getStatus, ProductStatusEnum.ON_SHELF.getCode());
         }
         wrapper.in(Product::getId, productIds);
