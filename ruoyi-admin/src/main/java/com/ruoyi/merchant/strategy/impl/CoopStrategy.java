@@ -18,7 +18,6 @@ public class CoopStrategy implements PriceCalculatorStrategy {
      */
     @Override
     public BigDecimal calculate(BigDecimal originalPrice) {
-        NumberUtil.mul(originalPrice, new BigDecimal("0.9"));
-        return originalPrice;
+        return NumberUtil.mul(originalPrice, new BigDecimal("0.9"));
     }
 }

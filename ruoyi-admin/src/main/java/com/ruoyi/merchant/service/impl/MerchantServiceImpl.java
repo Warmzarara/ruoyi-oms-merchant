@@ -64,6 +64,7 @@ public class MerchantServiceImpl implements MerchantService {
      */
     @Override
     public List<ProductListVO> findProductList(ProductListReq req) {
+        // 查询商品列表
         List<Product> productList = getDbProducts(req);
         if (CollUtil.isEmpty(productList)) {
             return new ArrayList<>();
@@ -121,45 +122,64 @@ public class MerchantServiceImpl implements MerchantService {
         return product;
     }
 
+    /**
+     * 添加商品
+     * @param productAddReq 添加商品请求体
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void addProduct(ProductAddReq productAddReq){
         // 校验并获取图片列表数据
         List<ProductImgDTO> prdImgDTOList = validAndGetImgList(productAddReq);
+        // 商品主表主键id
+        String savePrdId = IdUtil.fastSimpleUUID();
+        // 插入商品主表
+        saveDbProduct(productAddReq, savePrdId);
+        // 处理图片数据
+        resolveDisplayImg(prdImgDTOList);
+        // 批量插入商品图片数据
+        saveBatchDbProductImage(prdImgDTOList, savePrdId);
+    }
+
+    private void saveBatchDbProductImage(List<ProductImgDTO> prdImgDTOList, String savePrdId) {
+        List<ProductImage> savePrdImgList = prdImgDTOList.stream()
+                .map(img -> assembleDbProductImage(savePrdId, img))
+                .collect(Collectors.toList());
+        if (!productImageManager.saveBatch(savePrdImgList)) {
+            throw new ServiceException("商品图片数据更新失败，商品新增失败");
+        }
+    }
+
+    private static ProductImage assembleDbProductImage(String savePrdId, ProductImgDTO img) {
+        ProductImage savePrdImg = new ProductImage();
+        savePrdImg.setId(IdUtil.fastSimpleUUID());
+        savePrdImg.setProductId(savePrdId);
+        savePrdImg.setImageUrl(img.getImageUrl());
+        savePrdImg.setDisplayOrder(img.getDisplayOrder());
+        savePrdImg.setIsDisplay(ObjUtil.defaultIfNull(img.getIsDisplay(), YesNoEnum.NO.getCode()));
+        savePrdImg.setCreatedTime(new Date());
+        savePrdImg.setCreatedUser(SecurityUtils.getUsername());
+        return savePrdImg;
+    }
+
+    private static void resolveDisplayImg(List<ProductImgDTO> prdImgDTOList) {
+        boolean hasDisplayImg = prdImgDTOList.stream().anyMatch(img -> ObjUtil.equals(img.getIsDisplay(), YesNoEnum.YES.getCode()));
+        if (!hasDisplayImg) {
+            prdImgDTOList.get(0).setIsDisplay(YesNoEnum.YES.getCode());
+        }
+    }
+
+    private void saveDbProduct(ProductAddReq productAddReq, String savePrdId) {
         Product product = new Product();
         BeanUtil.copyProperties(productAddReq, product);
-        String savePrdId = IdUtil.fastSimpleUUID();
         product.setId(savePrdId);
         product.setCreatedUser(SecurityUtils.getUsername());
         product.setCreatedTime(new Date());
         if (!productManager.save(product)) {
             throw new ServiceException("商品数据新增失败");
         }
-        // 处理图片数据
-        Integer yesCode = YesNoEnum.YES.getCode();
-        Integer noCode = YesNoEnum.NO.getCode();
-        boolean hasDisplayImg = prdImgDTOList.stream().anyMatch(img -> ObjUtil.equals(img.getIsDisplay(), yesCode));
-        if (!hasDisplayImg) {
-            prdImgDTOList.get(0).setIsDisplay(yesCode);
-        }
-
-        List<ProductImage> savePrdImgList = prdImgDTOList.stream().map(img -> {
-            ProductImage savePrdImg = new ProductImage();
-            savePrdImg.setId(IdUtil.fastSimpleUUID());
-            savePrdImg.setProductId(savePrdId);
-            savePrdImg.setImageUrl(img.getImageUrl());
-            savePrdImg.setDisplayOrder(img.getDisplayOrder());
-            savePrdImg.setIsDisplay(ObjUtil.defaultIfNull(img.getIsDisplay(), noCode));
-            savePrdImg.setCreatedTime(new Date());
-            savePrdImg.setCreatedUser(SecurityUtils.getUsername());
-            return savePrdImg;
-        }).collect(Collectors.toList());
-        
-        if (!productImageManager.saveBatch(savePrdImgList)) {
-            throw new ServiceException("商品图片数据更新失败，商品新增失败");
-        }
     }
-    
+
     private List<ProductImgDTO> validAndGetImgList(ProductAddReq productAddReq){
         List<ProductImgDTO> dtoList = productAddReq.getPrdImgList();
         if (CollUtil.isEmpty(dtoList)) {
@@ -231,6 +251,10 @@ public class MerchantServiceImpl implements MerchantService {
         }
     }
 
+    /**
+     * 更新商品详情
+     * @param productEditReq 更新商品详情请求体
+     */
     @Transactional
     @Override
     public void updateProductDetail(ProductEditReq productEditReq) {
@@ -284,7 +308,11 @@ public class MerchantServiceImpl implements MerchantService {
         return productImage;
     }
 
-
+    /**
+     * 商家端下单
+     * @param merchantOrderCreateReq 商家端下单请求体
+     * @return 商家端下单响应数据
+     */
     @Transactional(rollbackFor = Exception.class)
     @Override
     public OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
