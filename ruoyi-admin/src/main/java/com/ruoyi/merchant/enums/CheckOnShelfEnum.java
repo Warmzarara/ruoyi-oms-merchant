@@ -6,7 +6,7 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public enum CheckOnShelfEnum {
-    CHECK_ON_SHELF("1"),
+    ONLY_ON_SHELF("1"),
     DONT_CHECK("0");
     private final String code;
 }

@@ -1,10 +1,17 @@
 package com.ruoyi.common.exception;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.RequiredArgsConstructor;
+
 /**
  * 业务异常
  *
  * @author ruoyi
  */
+@EqualsAndHashCode(callSuper = true)
+@Data
+@RequiredArgsConstructor
 public final class ServiceException extends RuntimeException
 {
     private static final long serialVersionUID = 1L;
@@ -33,9 +40,6 @@ public final class ServiceException extends RuntimeException
     /**
      * 空构造方法，避免反序列化问题
      */
-    public ServiceException()
-    {
-    }
 
     public ServiceException(String message)
     {
@@ -61,42 +65,10 @@ public final class ServiceException extends RuntimeException
         this.data = data;
     }
 
-    public String getDetailMessage()
-    {
-        return detailMessage;
-    }
-
-    @Override
-    public String getMessage()
-    {
-        return message;
-    }
-
-    public Integer getCode()
-    {
-        return code;
-    }
-
-    public Object getData()
-    {
-        return data;
-    }
-
-    public ServiceException setMessage(String message)
+    public ServiceException(String message, Object data)
     {
         this.message = message;
-        return this;
-    }
-
-    public ServiceException setDetailMessage(String detailMessage)
-    {
-        this.detailMessage = detailMessage;
-        return this;
-    }
-
-    public ServiceException setData(Object data)
-    {
         this.data = data;
-        return this;
     }
+    
 }

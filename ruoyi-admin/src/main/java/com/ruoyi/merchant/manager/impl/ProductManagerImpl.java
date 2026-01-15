@@ -8,6 +8,7 @@ import com.github.yulichang.wrapper.MPJLambdaWrapper;
 import com.ruoyi.common.enums.YesNoEnum;
 import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.merchant.domain.ProductImage;
+import com.ruoyi.merchant.domain.dto.OrderProductDTO;
 import com.ruoyi.merchant.enums.CheckOnShelfEnum;
 import com.ruoyi.merchant.enums.ProductStatusEnum;
 import com.ruoyi.merchant.manager.ProductImageManager;
@@ -17,7 +18,6 @@ import com.ruoyi.merchant.manager.ProductManager;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -26,6 +26,9 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
     
     @Resource
     private ProductImageManager productImageManager;
+
+    @Resource
+    ProductMapper productMapper;
     
     @Override
     public List<Product> findProductList(Product product) {
@@ -72,7 +75,7 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
     public List<Product> findProductByIds(List<String> productIds, CheckOnShelfEnum isCheckOnShelf) {
         MPJLambdaWrapper<Product> wrapper = new MPJLambdaWrapper<>();
         wrapper.eq(Product::getIsDeleted, YesNoEnum.NO.getCode());
-        if (isCheckOnShelf == CheckOnShelfEnum.CHECK_ON_SHELF) {
+        if (isCheckOnShelf == CheckOnShelfEnum.ONLY_ON_SHELF) {
             wrapper.eq(Product::getStatus, ProductStatusEnum.ON_SHELF.getCode());
         }
         wrapper.in(Product::getId, productIds);
@@ -80,7 +83,7 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
     }
 
     @Override
-    public Boolean decreasePrdStock(String productId, Integer decreaseNum) {
+    public Boolean decreaseProductStock(String productId, Integer decreaseNum) {
         LambdaUpdateWrapper<Product> wrapper = new LambdaUpdateWrapper<>();
         wrapper.setSql("stock = stock - " + decreaseNum);
         wrapper.set(Product::getUpdatedTime, new Date());
@@ -95,7 +98,9 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
 //        
 //        return Collections.emptyList();
 //    }
-
+    public int batchDecreaseProductStock(List<OrderProductDTO> orderProductDTOList){
+        return productMapper.batchDecreaseProductStock(orderProductDTOList);
+    }
 
 }
 
