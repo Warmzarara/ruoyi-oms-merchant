@@ -34,4 +34,7 @@ public class OrderCreateVO {
     
     // 商品缩略图
     private String showImage;
+    
+    // 下单时间
+    private Date orderCreateTime;
 }

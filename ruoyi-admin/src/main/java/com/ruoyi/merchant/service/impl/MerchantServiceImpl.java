@@ -29,14 +29,18 @@ import com.ruoyi.merchant.service.MerchantService;
 import com.ruoyi.merchant.strategy.PriceCalculatorStrategy;
 import com.ruoyi.merchant.util.CollectUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.ruoyi.merchant.manager.OrderProductManager;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -60,6 +64,9 @@ public class MerchantServiceImpl implements MerchantService {
 
     @Resource
     private PriceStrategyFactory priceStrategyFactory;
+
+    @Resource
+    private RedissonClient redissonClient;
 
     /**
      * 商家端-商品列表查询
@@ -139,6 +146,9 @@ public class MerchantServiceImpl implements MerchantService {
     @Transactional(rollbackFor = Exception.class)
     @Override
     public OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
+        // 下单操作开始时间
+        Date orderCreateTime = new Date();
+
         // 获取客户信息并校验
         Customer customer = validAndGetCustomer(merchantOrderCreateReq.getReceiverPhone());
 
@@ -155,13 +165,13 @@ public class MerchantServiceImpl implements MerchantService {
         BigDecimal totalPrice = calculateTotalPrice(merchantOrderCreateReq, dbProductIdMap, customer);
 
         // 插入订单主表
-        String orderId = saveOrder(merchantOrderCreateReq, customer, totalPrice);
+        String orderId = saveOrder(merchantOrderCreateReq, customer, totalPrice, orderCreateTime);
 
         // 插入订单详情表
-        saveOrderProduct(merchantOrderCreateReq, dbProductIdMap, orderId);
+        saveOrderProduct(merchantOrderCreateReq, dbProductIdMap, orderId, orderCreateTime);
 
         // 组装响应数据并返回
-        return assembleOrderCreateVO(merchantOrderCreateReq, dbProductIdMap, orderId, totalPrice);
+        return assembleOrderCreateVO(merchantOrderCreateReq, dbProductIdMap, orderId, totalPrice, orderCreateTime);
     }
     
     private List<Product> getDbProducts(ProductListReq req) {
@@ -376,7 +386,7 @@ public class MerchantServiceImpl implements MerchantService {
                 .collect(Collectors.toList());
     }
 
-    private static OrderCreateVO assembleOrderCreateVO(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, String orderId, BigDecimal totalPrice) {
+    private static OrderCreateVO assembleOrderCreateVO(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, String orderId, BigDecimal totalPrice, Date orderCreateTime) {
         // 计算各项商品总金额
         Map<String, BigDecimal> productTotalPriceMap = calculateProductPrice(merchantOrderCreateReq, dbProductIdMap);
         OrderCreateVO orderCreateVO = new OrderCreateVO();
@@ -387,6 +397,7 @@ public class MerchantServiceImpl implements MerchantService {
         orderCreateVO.setReceiverName(merchantOrderCreateReq.getReceiverName());
         orderCreateVO.setReceiverAddress(merchantOrderCreateReq.getReceiverAddress());
         orderCreateVO.setReceiverPhone(merchantOrderCreateReq.getReceiverPhone());
+        orderCreateVO.setOrderCreateTime(orderCreateTime);
         return orderCreateVO;
     }
 
@@ -421,11 +432,11 @@ public class MerchantServiceImpl implements MerchantService {
                 }));
     }
 
-    private void saveOrderProduct(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, String orderId) {
+    private void saveOrderProduct(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, String orderId, Date orderCreateTime) {
         // 组装订单列表
         List<OrderProduct> orderProductList = merchantOrderCreateReq.getOrderProductDTOList().stream()
                 .map(orderProductDTO -> 
-                        assembleOrderProduct(orderProductDTO, dbProductIdMap, orderId))
+                        assembleOrderProduct(orderProductDTO, dbProductIdMap, orderId, orderCreateTime))
                 .collect(Collectors.toList());
         // 插入订单详情信息
         if (!orderProductManager.saveBatch(orderProductList)) {
@@ -433,7 +444,7 @@ public class MerchantServiceImpl implements MerchantService {
         }
     }
 
-    private static OrderProduct assembleOrderProduct(OrderProductDTO orderProductDTO, Map<String, Product> dbProductIdMap, String orderId) {
+    private static OrderProduct assembleOrderProduct(OrderProductDTO orderProductDTO, Map<String, Product> dbProductIdMap, String orderId, Date orderCreateTime) {
         Product dbProduct = dbProductIdMap.get(orderProductDTO.getProductId());
         OrderProduct orderProduct = new OrderProduct();
         orderProduct.setId(IdUtil.fastSimpleUUID());
@@ -443,13 +454,13 @@ public class MerchantServiceImpl implements MerchantService {
         orderProduct.setProductQuantity(orderProductDTO.getNum());
         orderProduct.setProductPriceSnapshot(dbProduct.getPrice());
         orderProduct.setCreatedUser(SecurityUtils.getUsername());
-        orderProduct.setCreatedTime(new Date());
+        orderProduct.setCreatedTime(orderCreateTime);
         return orderProduct;
     }
 
-    private String saveOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice) {
+    private String saveOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice, Date orderCreateTime) {
         // 组装订单数据
-        Order order = assembleOrder(merchantOrderCreateReq, customer, totalPrice);
+        Order order = assembleOrder(merchantOrderCreateReq, customer, totalPrice, orderCreateTime);
         
         // 更新订单
         if (!orderManager.save(order)) {
@@ -458,7 +469,7 @@ public class MerchantServiceImpl implements MerchantService {
         return order.getId();
     }
 
-    private Order assembleOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice) {
+    private Order assembleOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice, Date orderCreateTime) {
         Order order = new Order();
         order.setId(IdUtil.fastSimpleUUID());
         order.setCustomerId(customer.getId());
@@ -467,7 +478,7 @@ public class MerchantServiceImpl implements MerchantService {
         order.setTotalQuantity(getTotalNum(merchantOrderCreateReq));
         order.setRemark(merchantOrderCreateReq.getRemark());
         order.setCreatedUser(SecurityUtils.getUsername());
-        order.setCreatedTime(new Date());
+        order.setCreatedTime(orderCreateTime);
         return order;
     }
 
@@ -513,5 +524,20 @@ public class MerchantServiceImpl implements MerchantService {
             throw new ServiceException("下单的商品不存在", invalidProductIdList);
         }
         return dbProductList.stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+    }
+
+    public <V> V doInLock(String orgId, Supplier<V> runnable) {
+        String key = getKey(orgId);
+        RLock lock = redissonClient.getLock(StrUtil.format("{}:{}", "MERCHANT:ORDER_CREATE_LOCK", key));
+        lock.lock();
+        try {
+            return runnable.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private String getKey(String orgId) {
+        return StrUtil.format("{}_{}", orgId, LocalDate.now().getYear());
     }
 }
