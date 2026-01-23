@@ -26,6 +26,7 @@ import com.ruoyi.merchant.manager.ProductImageManager;
 import com.ruoyi.merchant.manager.ProductManager;
 import com.ruoyi.merchant.manager.CustomerManager;
 import com.ruoyi.merchant.service.MerchantService;
+import com.ruoyi.merchant.service.OrderService;
 import com.ruoyi.merchant.strategy.PriceCalculatorStrategy;
 import com.ruoyi.merchant.util.CollectUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -39,13 +40,18 @@ import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
 public class MerchantServiceImpl implements MerchantService {
+    
+    @Resource
+    OrderService orderService;
     
     @Resource
     ProductManager productManager;
@@ -143,32 +149,46 @@ public class MerchantServiceImpl implements MerchantService {
      * @param merchantOrderCreateReq 商家端下单请求体
      * @return 商家端下单响应数据
      */
-    @Transactional(rollbackFor = Exception.class)
     @Override
     public OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq) {
         // 下单操作开始时间
         Date orderCreateTime = new Date();
+        
+        // 生成订单uuid
+        String orderId = IdUtil.fastSimpleUUID();
 
         // 获取客户信息并校验
         Customer customer = validAndGetCustomer(merchantOrderCreateReq.getReceiverPhone());
 
         // 获取商品信息并校验（存在性，是否上架，获取商品Map）
         Map<String, Product> dbProductIdMap = validProductAndGetMap(merchantOrderCreateReq);
-
-        // 检查库存是否充足
-        checkProductStock(merchantOrderCreateReq, dbProductIdMap);
-
-        // 批量扣减商品库存
-        batchDecreaseStock(merchantOrderCreateReq);
-
+        
         // 计算订单总金额
         BigDecimal totalPrice = calculateTotalPrice(merchantOrderCreateReq, dbProductIdMap, customer);
-
-        // 插入订单主表
-        String orderId = saveOrder(merchantOrderCreateReq, customer, totalPrice, orderCreateTime);
-
-        // 插入订单详情表
-        saveOrderProduct(merchantOrderCreateReq, dbProductIdMap, orderId, orderCreateTime);
+        
+        // 对商品id排序后加锁
+        List<RLock> successLocks = new ArrayList<>();
+        try {
+            List<String> dbProductIdList = dbProductIdMap.keySet().stream().sorted().collect(Collectors.toList());
+            for (String dbProductId : dbProductIdList) {
+                RLock lock = redissonClient.getLock(StrUtil.format("{}:{}", "ORDER_CREATE", dbProductId));
+                boolean isLocked = lock.tryLock(3, 10, TimeUnit.SECONDS);
+                if (!isLocked) {
+                    throw new ServiceException(StrUtil.format("系统繁忙，请重试"));
+                }
+                successLocks.add(lock);
+            }
+            orderService.createOrder(merchantOrderCreateReq, dbProductIdMap, customer, orderCreateTime, orderId, totalPrice);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ServiceException("下单异常，请重试");
+        } finally {
+            for (RLock lock : successLocks) {
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
+            }
+        }
 
         // 组装响应数据并返回
         return assembleOrderCreateVO(merchantOrderCreateReq, dbProductIdMap, orderId, totalPrice, orderCreateTime);
@@ -432,85 +452,12 @@ public class MerchantServiceImpl implements MerchantService {
                 }));
     }
 
-    private void saveOrderProduct(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, String orderId, Date orderCreateTime) {
-        // 组装订单列表
-        List<OrderProduct> orderProductList = merchantOrderCreateReq.getOrderProductDTOList().stream()
-                .map(orderProductDTO -> 
-                        assembleOrderProduct(orderProductDTO, dbProductIdMap, orderId, orderCreateTime))
-                .collect(Collectors.toList());
-        // 插入订单详情信息
-        if (!orderProductManager.saveBatch(orderProductList)) {
-            throw new ServiceException("下单失败，商品详情插入失败");
-        }
-    }
-
-    private static OrderProduct assembleOrderProduct(OrderProductDTO orderProductDTO, Map<String, Product> dbProductIdMap, String orderId, Date orderCreateTime) {
-        Product dbProduct = dbProductIdMap.get(orderProductDTO.getProductId());
-        OrderProduct orderProduct = new OrderProduct();
-        orderProduct.setId(IdUtil.fastSimpleUUID());
-        orderProduct.setProductId(orderProductDTO.getProductId());
-        orderProduct.setProductNameSnapshot(dbProduct.getTitle());
-        orderProduct.setOrderId(orderId);
-        orderProduct.setProductQuantity(orderProductDTO.getNum());
-        orderProduct.setProductPriceSnapshot(dbProduct.getPrice());
-        orderProduct.setCreatedUser(SecurityUtils.getUsername());
-        orderProduct.setCreatedTime(orderCreateTime);
-        return orderProduct;
-    }
-
-    private String saveOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice, Date orderCreateTime) {
-        // 组装订单数据
-        Order order = assembleOrder(merchantOrderCreateReq, customer, totalPrice, orderCreateTime);
-        
-        // 更新订单
-        if (!orderManager.save(order)) {
-            throw new ServiceException("下单失败，订单数据插入失败");
-        }
-        return order.getId();
-    }
-
-    private Order assembleOrder(MerchantOrderCreateReq merchantOrderCreateReq, Customer customer, BigDecimal totalPrice, Date orderCreateTime) {
-        Order order = new Order();
-        order.setId(IdUtil.fastSimpleUUID());
-        order.setCustomerId(customer.getId());
-        order.setStatus(OrderStatusEnum.ORDER_CREATED.getCode());
-        order.setTotalPrice(totalPrice);
-        order.setTotalQuantity(getTotalNum(merchantOrderCreateReq));
-        order.setRemark(merchantOrderCreateReq.getRemark());
-        order.setCreatedUser(SecurityUtils.getUsername());
-        order.setCreatedTime(orderCreateTime);
-        return order;
-    }
-
-    private static int getTotalNum(MerchantOrderCreateReq merchantOrderCreateReq) {
-        return merchantOrderCreateReq.getOrderProductDTOList().stream().mapToInt(OrderProductDTO::getNum).sum();
-    }
-
     private BigDecimal calculateTotalPrice(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap, Customer customer) {
         BigDecimal originalTotalPrice = merchantOrderCreateReq.getOrderProductDTOList().stream()
                 .map(orderProductDto -> NumberUtil.mul(orderProductDto.getNum(), dbProductIdMap.get(orderProductDto.getProductId()).getPrice()))
                 .reduce(BigDecimal.ZERO, NumberUtil::add);
         PriceCalculatorStrategy priceCalculatorStrategy = priceStrategyFactory.getStrategyByCustomerType(customer.getCustomerType());
         return priceCalculatorStrategy.calculate(originalTotalPrice);
-    }
-
-    private void batchDecreaseStock(MerchantOrderCreateReq merchantOrderCreateReq) {
-        List<OrderProductDTO> orderProductDTOList = merchantOrderCreateReq.getOrderProductDTOList();
-        for (OrderProductDTO orderProductDTO : orderProductDTOList) {
-            if (!productManager.decreaseProductStock(orderProductDTO.getProductId(), orderProductDTO.getNum())) {
-                throw new ServiceException("下单失败，下单期间库存有变动，请重试");
-            }
-        }
-    }
-
-    private static void checkProductStock(MerchantOrderCreateReq merchantOrderCreateReq, Map<String, Product> dbProductIdMap) {
-        List<OrderProductDTO> insufficientProductList = merchantOrderCreateReq.getOrderProductDTOList()
-                .stream().filter(dto -> 
-                        NumberUtil.compare(dto.getNum(), dbProductIdMap.get(dto.getProductId()).getStock()) > 0)
-                .collect(Collectors.toList());
-        if (CollUtil.isNotEmpty(insufficientProductList)) {
-            throw new ServiceException("商品库存不足", insufficientProductList);
-        }
     }
 
     private Map<String, Product> validProductAndGetMap(MerchantOrderCreateReq merchantOrderCreateReq) {
