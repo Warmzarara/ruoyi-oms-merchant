@@ -89,7 +89,7 @@ public class ProductManagerImpl extends MPJBaseServiceImpl<ProductMapper, Produc
         wrapper.set(Product::getUpdatedTime, new Date());
         wrapper.set(Product::getUpdatedUser, SecurityUtils.getUsername());
         wrapper.eq(Product::getId, productId);
-        wrapper.gt(Product::getStock, decreaseNum);
+        wrapper.ge(Product::getStock, decreaseNum);
         return this.update(null, wrapper);
     }
 

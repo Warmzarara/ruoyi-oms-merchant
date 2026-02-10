@@ -58,4 +58,14 @@ public class MerchantController extends BaseController {
         OrderCreateVO orderCreateVO = merchantService.merchantOrderCreate(merchantOrderCreateReq);
         return success(orderCreateVO);
     }
+    
+    @PostMapping("/deliver")
+    public AjaxResult deliver(@RequestBody MerchantDeliverReq merchantDeliverReq){
+        return success();
+    }
+    
+    @PostMapping("/pay")
+    public AjaxResult MerchantPay(@RequestBody MerchantPayRequest merchantPayRequest){
+        return success();
+    }
 }

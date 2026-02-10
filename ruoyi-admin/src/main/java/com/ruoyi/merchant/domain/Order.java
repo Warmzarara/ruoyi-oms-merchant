@@ -27,6 +27,8 @@ public class Order {
     private String remark;
     /** 支付时间 */
     private Date payTime;
+    /** 支付方式 */
+    private String payType;
     /** 发货时间 */
     private Date shipTime;
     /** 是否删除 */

@@ -9,9 +9,18 @@ import java.util.List;
 
 public interface MerchantService {
     List<ProductListVO> findProductList(ProductListReq merchantListReq);
+
     ProductDetailVO findProductDetail(String productId);
+
     void addProduct(ProductAddReq productAddReq);
+
     void updateProductStatus(ProductStatusReq productStatusReq);
+
     void updateProductDetail(ProductEditReq productEditReq);
+
     OrderCreateVO merchantOrderCreate(MerchantOrderCreateReq merchantOrderCreateReq);
+
+    void merchantDeliver(MerchantDeliverReq merchantDeliverReq);
+
+    void mockPay(MerchantPayRequest merchantPayRequest);
 }

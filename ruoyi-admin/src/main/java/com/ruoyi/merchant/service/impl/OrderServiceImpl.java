@@ -119,6 +119,9 @@ public class OrderServiceImpl implements OrderService {
         order.setRemark(merchantOrderCreateReq.getRemark());
         order.setCreatedUser(SecurityUtils.getUsername());
         order.setCreatedTime(orderCreateTime);
+        order.setReceiverAddress(merchantOrderCreateReq.getReceiverAddress());
+        order.setReceiverName(merchantOrderCreateReq.getReceiverName());
+        order.setReceiverPhone(merchantOrderCreateReq.getReceiverPhone());
         return order;
     }
 

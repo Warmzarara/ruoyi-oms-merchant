@@ -2,6 +2,8 @@ package com.ruoyi.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.map.MapUtil;
+import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.ObjUtil;
@@ -130,6 +132,7 @@ public class MerchantServiceImpl implements MerchantService {
 
     /**
      * 商家端-更新商品详情
+     * todo 商品上架时不允许修改，必须先下架才能修改商品详情信息
      * @param productEditReq 更新商品详情请求体
      */
     @Transactional
@@ -160,29 +163,39 @@ public class MerchantServiceImpl implements MerchantService {
         // 获取客户信息并校验
         Customer customer = validAndGetCustomer(merchantOrderCreateReq.getReceiverPhone());
 
-        // 获取商品信息并校验（存在性，是否上架，获取商品Map）
+        // 获取商品信息并校验（存在性，是否上架）
         Map<String, Product> dbProductIdMap = validProductAndGetMap(merchantOrderCreateReq);
         
         // 计算订单总金额
         BigDecimal totalPrice = calculateTotalPrice(merchantOrderCreateReq, dbProductIdMap, customer);
         
-        // 对商品id排序后加锁
+        // 库存扣减 订单创建
         List<RLock> successLocks = new ArrayList<>();
         try {
+            // 将商品按productId进行排序，防止出现 线程1下单a商品、b商品，线程2下单b商品、a商品 导致的死锁问题
             List<String> dbProductIdList = dbProductIdMap.keySet().stream().sorted().collect(Collectors.toList());
             for (String dbProductId : dbProductIdList) {
+                // 创建锁，粒度：ORDER_CREATE:productId
                 RLock lock = redissonClient.getLock(StrUtil.format("{}:{}", "ORDER_CREATE", dbProductId));
+                // 最大等待时间：3s，自动释放时间：10s
                 boolean isLocked = lock.tryLock(3, 10, TimeUnit.SECONDS);
+                // 未获取到锁，直接返回失败
                 if (!isLocked) {
                     throw new ServiceException(StrUtil.format("系统繁忙，请重试"));
                 }
+                // 将锁加入列表
                 successLocks.add(lock);
             }
+            ThreadUtil.sleep(10, TimeUnit.SECONDS);
+            
+            // 进入下单逻辑
             orderService.createOrder(merchantOrderCreateReq, dbProductIdMap, customer, orderCreateTime, orderId, totalPrice);
+            
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ServiceException("下单异常，请重试");
         } finally {
+            // 无论请求结果，必须释放掉所有的锁
             for (RLock lock : successLocks) {
                 if (lock.isHeldByCurrentThread()) {
                     lock.unlock();
@@ -193,7 +206,69 @@ public class MerchantServiceImpl implements MerchantService {
         // 组装响应数据并返回
         return assembleOrderCreateVO(merchantOrderCreateReq, dbProductIdMap, orderId, totalPrice, orderCreateTime);
     }
-    
+
+    @Override
+    @Transactional
+    public void merchantDeliver(MerchantDeliverReq merchantDeliverReq) {
+        // 校验订单是否已经发货
+        Order dbOrder = orderManager.getOrderByOrderId(merchantDeliverReq.getOrderId());
+        if (!NumberUtil.equals(dbOrder.getStatus(), OrderStatusEnum.ORDER_PAY.getCode())) {
+            throw new ServiceException(StrUtil.format("该订单状态为 {}，不能发货", dbOrder.getStatus()));
+        }
+
+        // 修改订单状态
+        dbOrder.setStatus(OrderStatusEnum.ORDER_DELIVERY.getCode());
+        if (!orderManager.updateById(dbOrder)) {
+            throw new ServiceException("发货失败，系统繁忙，请联系管理员");
+        }
+        // 插入发货记录表
+        Shipment dbShipment = new Shipment();
+        dbShipment.setId(IdUtil.fastSimpleUUID());
+        dbShipment.setOrderId(dbOrder.getId());
+        
+    }
+
+    /**
+     * 商家端-订单支付（暂未开发聚合支付功能，先使用mock的方式）
+     * @param merchantPayRequest 订单支付请求体
+     */
+    @Override
+    @Transactional
+    public void mockPay(MerchantPayRequest merchantPayRequest) {
+        // 校验
+        Order dbOrder = getOrderAndValid(merchantPayRequest);
+
+        // 数据处理
+        updateOrder(dbOrder);
+    }
+
+    private void updateOrder(Order dbOrder) {
+        String mockPayType = "mock_pay";
+        assembleDbOrder(dbOrder, mockPayType);
+        if (!orderManager.updateById(dbOrder)) {
+            throw new ServiceException("支付失败，系统繁忙，请联系管理员");
+        }
+    }
+
+    private static void assembleDbOrder(Order dbOrder, String mockPayType) {
+        dbOrder.setPayTime(new Date());
+        dbOrder.setPayType(mockPayType);
+        dbOrder.setStatus(OrderStatusEnum.ORDER_PAY.getCode());
+    }
+
+    private Order getOrderAndValid(MerchantPayRequest merchantPayRequest) {
+        // 订单是否存在
+        Order dbOrder = orderManager.getOrderByOrderId(merchantPayRequest.getOrderId());
+        if (ObjUtil.isNull(dbOrder)) {
+            throw new ServiceException(StrUtil.format("订单 {} 不存在)", merchantPayRequest.getOrderId()));
+        }
+        // 订单状态是否为：订单已创建
+        if (!NumberUtil.equals(dbOrder.getStatus(), OrderStatusEnum.ORDER_NOT_PAY.getCode())) {
+            throw new ServiceException(StrUtil.format("该订单状态为 {} ,不能支付", OrderStatusEnum.getDescByCode(dbOrder.getStatus())));
+        }
+        return dbOrder;
+    }
+
     private List<Product> getDbProducts(ProductListReq req) {
         Product product = new Product();
         BeanUtil.copyProperties(req, product);
@@ -461,16 +536,29 @@ public class MerchantServiceImpl implements MerchantService {
     }
 
     private Map<String, Product> validProductAndGetMap(MerchantOrderCreateReq merchantOrderCreateReq) {
-        List<OrderProductDTO> orderProductDTOList = merchantOrderCreateReq.getOrderProductDTOList();
-        List<String> reqProductIdList = CollectUtil.toList(orderProductDTOList, OrderProductDTO::getProductId);
-        Set<String> reqProductIdSet = new HashSet<>(reqProductIdList);
+        // 获取请求中商品列表 productId与product对象映射关系
+        Map<String, OrderProductDTO> orderProductIdDtoMap = merchantOrderCreateReq.getOrderProductDTOList().stream()
+                .collect(Collectors.toMap(OrderProductDTO::getProductId, Function.identity(), (v1, v2) -> v1));
+        
+        // 请求中的productId列表
+        List<String> reqProductIdList = new ArrayList<>(orderProductIdDtoMap.keySet());
+        
+        // 根据productId列表查询商品数据，只查上架状态的
         List<Product> dbProductList = productManager.findProductByIds(reqProductIdList, CheckOnShelfEnum.ONLY_ON_SHELF);
-        Set<String> dbProductIdSet = CollectUtil.toSet(dbProductList, Product::getId);
-        if (! CollUtil.containsAll(dbProductIdSet, reqProductIdSet)) {
-            Collection<String> invalidProductIdList = CollUtil.subtract(reqProductIdSet, dbProductIdSet);
-            throw new ServiceException("下单的商品不存在", invalidProductIdList);
+        
+        // 获取数据库中product表 id与实体的映射map
+        Map<String, Product> dbIdProductMap = dbProductList.stream()
+                .collect(Collectors.toMap(Product::getId, Function.identity(), (v1, v2) -> v1));
+        
+        // 获取不存在或未上架的商品title列表，直接返回
+        if (CollUtil.size(orderProductIdDtoMap) != CollUtil.size(dbIdProductMap)) {
+            List<String> invalidTitles = orderProductIdDtoMap.entrySet().stream()
+                    .filter(entry -> !dbIdProductMap.containsKey(entry.getKey()))
+                    .map(entry -> entry.getValue().getTitle()).collect(Collectors.toList());
+            throw new ServiceException("以下商品不存在或未上架", invalidTitles);
         }
-        return dbProductList.stream().collect(Collectors.toMap(Product::getId, Function.identity()));
+
+        return dbIdProductMap;
     }
 
     public <V> V doInLock(String orgId, Supplier<V> runnable) {
