@@ -61,11 +61,13 @@ public class MerchantController extends BaseController {
     
     @PostMapping("/deliver")
     public AjaxResult deliver(@RequestBody MerchantDeliverReq merchantDeliverReq){
+        merchantService.merchantDeliver(merchantDeliverReq);
         return success();
     }
     
     @PostMapping("/pay")
     public AjaxResult MerchantPay(@RequestBody MerchantPayRequest merchantPayRequest){
+        merchantService.mockPay(merchantPayRequest);
         return success();
     }
 }

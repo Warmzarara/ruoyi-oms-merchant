@@ -28,7 +28,7 @@ public class Order {
     /** 支付时间 */
     private Date payTime;
     /** 支付方式 */
-    private String payType;
+    private Integer payType;
     /** 发货时间 */
     private Date shipTime;
     /** 是否删除 */

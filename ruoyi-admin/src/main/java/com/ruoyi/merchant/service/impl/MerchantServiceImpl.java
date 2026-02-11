@@ -2,7 +2,6 @@ package com.ruoyi.merchant.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.NumberUtil;
@@ -22,11 +21,9 @@ import com.ruoyi.merchant.domain.vo.ProductListVO;
 import com.ruoyi.merchant.enums.CheckOnShelfEnum;
 import com.ruoyi.merchant.enums.CustomerStatusEnum;
 import com.ruoyi.merchant.enums.OrderStatusEnum;
+import com.ruoyi.merchant.enums.ShippingStatus;
 import com.ruoyi.merchant.factory.PriceStrategyFactory;
-import com.ruoyi.merchant.manager.OrderManager;
-import com.ruoyi.merchant.manager.ProductImageManager;
-import com.ruoyi.merchant.manager.ProductManager;
-import com.ruoyi.merchant.manager.CustomerManager;
+import com.ruoyi.merchant.manager.*;
 import com.ruoyi.merchant.service.MerchantService;
 import com.ruoyi.merchant.service.OrderService;
 import com.ruoyi.merchant.strategy.PriceCalculatorStrategy;
@@ -36,7 +33,6 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.ruoyi.merchant.manager.OrderProductManager;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
@@ -75,6 +71,9 @@ public class MerchantServiceImpl implements MerchantService {
 
     @Resource
     private RedissonClient redissonClient;
+    
+    @Resource
+    private ShipmentManager shipmentManager;
 
     /**
      * 商家端-商品列表查询
@@ -207,25 +206,51 @@ public class MerchantServiceImpl implements MerchantService {
         return assembleOrderCreateVO(merchantOrderCreateReq, dbProductIdMap, orderId, totalPrice, orderCreateTime);
     }
 
+    /**
+     * 商家端-发货
+     * @param merchantDeliverReq 发货请求对象
+     */
     @Override
     @Transactional
     public void merchantDeliver(MerchantDeliverReq merchantDeliverReq) {
         // 校验订单是否已经发货
-        Order dbOrder = orderManager.getOrderByOrderId(merchantDeliverReq.getOrderId());
-        if (!NumberUtil.equals(dbOrder.getStatus(), OrderStatusEnum.ORDER_PAY.getCode())) {
-            throw new ServiceException(StrUtil.format("该订单状态为 {}，不能发货", dbOrder.getStatus()));
-        }
+        Order dbOrder = getAndValidOrder(merchantDeliverReq);
 
         // 修改订单状态
+        updateOrderStatusDelivery(dbOrder);
+        
+        // 组装并插入发货记录表
+        assembleAndSaveDeliveryShipment(merchantDeliverReq, dbOrder);
+    }
+
+    private void assembleAndSaveDeliveryShipment(MerchantDeliverReq merchantDeliverReq, Order dbOrder) {
+        Shipment dbShipment = new Shipment();
+        dbShipment.setId(IdUtil.fastSimpleUUID());
+        dbShipment.setOrderId(dbOrder.getId());
+        dbShipment.setLogisticsNo(merchantDeliverReq.getLogisticsNo());
+        dbShipment.setLogisticsCompany(merchantDeliverReq.getLogisticsCompany());
+        dbShipment.setShipTime(new Date());
+        dbShipment.setStatus(ShippingStatus.SHIPPED.getCode());
+        dbShipment.setCreatedUser(SecurityUtils.getUsername());
+        dbShipment.setCreatedTime(new Date());
+        if (!shipmentManager.save(dbShipment)) {
+            throw new ServiceException("系统异常，请联系管理员");
+        }
+    }
+
+    private void updateOrderStatusDelivery(Order dbOrder) {
         dbOrder.setStatus(OrderStatusEnum.ORDER_DELIVERY.getCode());
         if (!orderManager.updateById(dbOrder)) {
             throw new ServiceException("发货失败，系统繁忙，请联系管理员");
         }
-        // 插入发货记录表
-        Shipment dbShipment = new Shipment();
-        dbShipment.setId(IdUtil.fastSimpleUUID());
-        dbShipment.setOrderId(dbOrder.getId());
-        
+    }
+
+    private Order getAndValidOrder(MerchantDeliverReq merchantDeliverReq) {
+        Order dbOrder = orderManager.getOrderByOrderId(merchantDeliverReq.getOrderId());
+        if (!NumberUtil.equals(dbOrder.getStatus(), OrderStatusEnum.ORDER_PAY.getCode())) {
+            throw new ServiceException(StrUtil.format("该订单状态为 {}，不能发货", dbOrder.getStatus()));
+        }
+        return dbOrder;
     }
 
     /**
@@ -235,25 +260,44 @@ public class MerchantServiceImpl implements MerchantService {
     @Override
     @Transactional
     public void mockPay(MerchantPayRequest merchantPayRequest) {
-        // 校验
+        // 校验订单状态
         Order dbOrder = getOrderAndValid(merchantPayRequest);
 
-        // 数据处理
+        // 更新订单
         updateOrder(dbOrder);
+        
+        // 组装并插入发货表
+        assembleAndInsertIntoShipment(dbOrder);
+
+    }
+
+    private void assembleAndInsertIntoShipment(Order dbOrder) {
+        Shipment dbShipment = new Shipment();
+        dbShipment.setId(IdUtil.fastSimpleUUID());
+        dbShipment.setOrderId(dbOrder.getId());
+        dbShipment.setShipTime(new Date());
+        dbShipment.setStatus(ShippingStatus.TO_BE_SHIPPED.getCode());
+        dbShipment.setCreatedUser(SecurityUtils.getUsername());
+        dbShipment.setCreatedTime(new Date());
+        if (!shipmentManager.save(dbShipment)) {
+            throw new ServiceException("系统繁忙，请联系管理员");
+        }
     }
 
     private void updateOrder(Order dbOrder) {
-        String mockPayType = "mock_pay";
+        Integer mockPayType = 1;
         assembleDbOrder(dbOrder, mockPayType);
         if (!orderManager.updateById(dbOrder)) {
             throw new ServiceException("支付失败，系统繁忙，请联系管理员");
         }
     }
 
-    private static void assembleDbOrder(Order dbOrder, String mockPayType) {
+    private static void assembleDbOrder(Order dbOrder, Integer mockPayType) {
         dbOrder.setPayTime(new Date());
         dbOrder.setPayType(mockPayType);
         dbOrder.setStatus(OrderStatusEnum.ORDER_PAY.getCode());
+        dbOrder.setUpdatedTime(new Date());
+        dbOrder.setUpdatedUser(SecurityUtils.getUsername());
     }
 
     private Order getOrderAndValid(MerchantPayRequest merchantPayRequest) {
